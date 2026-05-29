@@ -352,7 +352,44 @@
     height: auto;
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    cursor: zoom-in;
+    transition: transform .15s;
   }
+  .imagem-questao img:active { transform: scale(0.98); }
+
+  /* Modal de imagem ampliada */
+  #modal-imagem {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    cursor: zoom-out;
+  }
+  #modal-imagem.visivel { display: flex; }
+  #modal-imagem img {
+    max-width: 95vw;
+    max-height: 92vh;
+    border-radius: 8px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+    animation: zoomIn .2s ease;
+  }
+  @keyframes zoomIn {
+    from { transform: scale(0.85); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+  }
+  #modal-imagem .fechar-modal {
+    position: absolute;
+    top: 16px; right: 22px;
+    color: white;
+    font-size: 32px;
+    cursor: pointer;
+    line-height: 1;
+    opacity: .75;
+  }
+  #modal-imagem .fechar-modal:hover { opacity: 1; }
 
   /* ── GRAFICO SIMULADO ── */
   .grafico-wrapper {
@@ -438,14 +475,14 @@
   }
   .alternativa:hover { border-color: var(--verde-claro); background: #f0f9f4; }
 
-  /* Alternância de cores: par = verde escuro, ímpar = azul */
+  /* Alternância de cores: par = verde escuro, ímpar = azul — cor completa */
   .alternativa.selecionada.cor-verde {
     border-color: #1a3a2a;
-    background: #e4f0ea;
+    background: #1a3a2a;
   }
   .alternativa.selecionada.cor-azul {
     border-color: #1a4a7a;
-    background: #e4edf8;
+    background: #1a4a7a;
   }
   .alternativa.correta  { border-color: var(--sucesso) !important; background: #e8f8ee !important; }
   .alternativa.incorreta { border-color: var(--erro)    !important; background: #fdecea !important; }
@@ -482,6 +519,11 @@
     line-height: 1.55;
     color: var(--texto);
     padding-top: 2px;
+    transition: color .18s, font-weight .18s;
+  }
+  .alternativa.selecionada .alt-texto {
+    color: #ffffff !important;
+    font-weight: 700 !important;
   }
 
   /* ── DISSERTATIVA ── */
@@ -722,6 +764,12 @@
 
 <!-- BADGE DE MONITORAMENTO -->
 <div id="badge-monitor" class="visivel">🟢 Monitorando</div>
+
+<!-- MODAL DE IMAGEM AMPLIADA -->
+<div id="modal-imagem" onclick="fecharModalImagem()">
+  <span class="fechar-modal">✕</span>
+  <img id="modal-imagem-src" src="" alt="Imagem ampliada">
+</div>
 
 
 <!-- CABEÇALHO -->
@@ -1111,24 +1159,27 @@ const GABARITO = {
 
 // ── SISTEMA DE ALTERNATIVAS COM ALTERNÂNCIA DE CORES ──
 var CORES_ALT = [
-  { bg: '#dbeafe', borda: '#1e3a8a', bolinha: '#1e3a8a', texto: '#1e3a8a' },  // azul
-  { bg: '#dcfce7', borda: '#14532d', bolinha: '#14532d', texto: '#14532d' }   // verde escuro
+  { fundo: '#1a3a2a', borda: '#1a3a2a', bolinha: '#1a3a2a', texto: '#ffffff' },
+  { fundo: '#1a4a7a', borda: '#1a4a7a', bolinha: '#1a4a7a', texto: '#ffffff' }
 ];
 var contadorSelecoes = {};
 
 function aplicarCorAlternativa(altEl, cor) {
+  // Pinta TODA a alternativa com a cor (fundo + borda)
   altEl.setAttribute('style',
-    'background:' + cor.bg + ' !important;' +
-    'border-color:' + cor.borda + ' !important;'
+    'background:' + cor.fundo + ' !important;' +
+    'border-color:' + cor.fundo + ' !important;'
   );
+  // Bolinha da letra
   var b = altEl.querySelector('.alt-letra');
   b.setAttribute('style',
-    'background:' + cor.bolinha + ' !important;' +
-    'border-color:' + cor.bolinha + ' !important;' +
+    'background:rgba(255,255,255,0.20) !important;' +
+    'border-color:rgba(255,255,255,0.50) !important;' +
     'color:#fff !important;'
   );
+  // Texto branco e negrito
   var t = altEl.querySelector('.alt-texto');
-  t.setAttribute('style', 'color:' + cor.texto + ' !important; font-weight:600 !important;');
+  t.setAttribute('style', 'color:#ffffff !important; font-weight:700 !important;');
 }
 
 function limparEstiloAlternativa(altEl) {
@@ -1419,10 +1470,52 @@ function toggleNomeDropdown() {
 function fecharNomeDropdown() {
   document.getElementById('nome-grupo').classList.remove('nome-dropdown-aberto');
 }
+
 // Fecha ao clicar fora
 document.addEventListener('click', function(e) {
   if (!document.getElementById('nome-grupo').contains(e.target)) {
     fecharNomeDropdown();
+  }
+});
+
+// ── MODAL DE IMAGEM (duplo clique) ──
+document.addEventListener('DOMContentLoaded', function() {
+  // Ativa duplo clique em todas as imagens de questão
+  // Duplo clique para ampliar imagem
+  var _clickTimers = {};
+  document.querySelectorAll('.imagem-questao img').forEach(function(img, idx) {
+    img.title = 'Clique duas vezes para ampliar';
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', function(e) {
+      if (_clickTimers[idx]) {
+        // segundo clique dentro de 400ms = duplo clique
+        clearTimeout(_clickTimers[idx]);
+        _clickTimers[idx] = null;
+        abrirModalImagem(this.src);
+      } else {
+        _clickTimers[idx] = setTimeout(function() {
+          _clickTimers[idx] = null;
+        }, 400);
+      }
+    });
+  });
+});
+
+function abrirModalImagem(src) {
+  document.getElementById('modal-imagem-src').src = src;
+  document.getElementById('modal-imagem').classList.add('visivel');
+  document.body.style.overflow = 'hidden';
+}
+
+function fecharModalImagem() {
+  document.getElementById('modal-imagem').classList.remove('visivel');
+  document.body.style.overflow = '';
+}
+
+// Fecha modal de imagem com ESC
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    fecharModalImagem();
   }
 });
 </script>
